@@ -54,18 +54,40 @@ jobs:
             echo "Using workspace: $WORKSPACE_FILE"
             SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
             echo "Using scheme: $SCHEME_NAME"
-            xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
+            
+            # Build with detailed output and error handling
+            echo "Starting xcodebuild..."
+            if ! xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
               CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
-              build
+              -destination 'generic/platform=iOS' \
+              -allowProvisioningUpdates \
+              build 2>&1 | tee build.log; then
+              echo "Build failed. Last 50 lines of build log:"
+              tail -50 build.log
+              echo "Searching for specific errors:"
+              grep -i "error:" build.log | tail -10
+              exit 1
+            fi
           elif [ -n "$PROJECT_FILE" ] && [ -f "$PROJECT_FILE/project.pbxproj" ]; then
             echo "Using project: $PROJECT_FILE"
             SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
             echo "Using scheme: $SCHEME_NAME"
-            xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
+            
+            # Build with detailed output and error handling
+            echo "Starting xcodebuild..."
+            if ! xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
               CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
-              build
+              -destination 'generic/platform=iOS' \
+              -allowProvisioningUpdates \
+              build 2>&1 | tee build.log; then
+              echo "Build failed. Last 50 lines of build log:"
+              tail -50 build.log
+              echo "Searching for specific errors:"
+              grep -i "error:" build.log | tail -10
+              exit 1
+            fi
           else
             echo "No valid .xcworkspace or .xcodeproj found."
             echo "Contents of ios directory:"
