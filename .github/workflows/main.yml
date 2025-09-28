@@ -1,0 +1,74 @@
+name: Build iOS IPA
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Yarn
+        run: npm i -g yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Setup Ruby & CocoaPods
+        run: |
+          sudo gem install cocoapods
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Expo prebuild (iOS)
+        run: |
+          npx expo prebuild -p ios --no-install
+          cd ios
+          pod install
+
+      - name: Build .app (Release, no signing) and package .ipa
+        id: build_ipa
+        run: |
+          set -e
+          cd ios
+          WORKSPACE=$(ls *.xcworkspace | head -n 1)
+          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find build -type d -name "*.app" | head -n 1 || true)
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found." && exit 1
+          fi
+          cd "$(dirname "$APP_PATH")"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$(basename "$APP_PATH")" Payload/
+          IPA_NAME=$(echo "$SCHEME" | tr ' ' '-' ).ipa
+          zip -r "$IPA_NAME" Payload
+          echo "IPA_PATH=$(pwd)/$IPA_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherry-studio-ios-ipa
+          path: ${{ steps.build_ipa.outputs.IPA_PATH }}
