@@ -10,7 +10,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Xcode 16
+      - name: Setup Xcode 16.1
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.1'
@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Enable Corepack and prepare Yarn
+      - name: Enable Corepack (Yarn 4)
         run: |
           corepack enable
           corepack prepare yarn@4.9.1 --activate
@@ -35,24 +35,37 @@ jobs:
         run: |
           npx expo prebuild -p ios --no-install
           cd ios
-          pod install
+          pod install --repo-update
 
       - name: Build .app (Release, no signing) and package .ipa
         id: build_ipa
         run: |
           set -e
           cd ios
-          WORKSPACE=$(ls *.xcworkspace | head -n 1)
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
-          xcodebuild \
-            -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
-            -configuration Release \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
+          WORKSPACE=$(ls *.xcworkspace 2>/dev/null | head -n 1 || true)
+          PROJECT=$(ls *.xcodeproj 2>/dev/null | head -n 1 || true)
+          if [ -n "$WORKSPACE" ]; then
+            xcodebuild \
+              -workspace "$WORKSPACE" \
+              -scheme "$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)" \
+              -configuration Release \
+              -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              -resultBundlePath build-result.xcresult \
+              build
+          elif [ -n "$PROJECT" ]; then
+            xcodebuild \
+              -project "$PROJECT" \
+              -scheme "$(xcodebuild -project "$PROJECT" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)" \
+              -configuration Release \
+              -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              -resultBundlePath build-result.xcresult \
+              build
+          else
+            echo "No Xcode workspace or project found." && exit 1
+          fi
+          # 查找 .app
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
           if [ -z "$APP_PATH" ]; then
             APP_PATH=$(find build -type d -name "*.app" | head -n 1 || true)
@@ -64,7 +77,7 @@ jobs:
           rm -rf Payload
           mkdir -p Payload
           cp -R "$(basename "$APP_PATH")" Payload/
-          IPA_NAME=$(echo "$SCHEME" | tr ' ' '-' ).ipa
+          IPA_NAME=app.ipa
           zip -r "$IPA_NAME" Payload
           echo "IPA_PATH=$(pwd)/$IPA_NAME" >> $GITHUB_OUTPUT
 
