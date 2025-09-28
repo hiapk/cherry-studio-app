@@ -42,17 +42,29 @@ jobs:
         run: |
           set -e
           cd ios
-          WORKSPACE_FILE=$(ls *.xcworkspace 2>/dev/null | head -n 1 || true)
-          PROJECT_FILE=$(ls *.xcodeproj 2>/dev/null | head -n 1 || true)
+          
+          # Find workspace or project file
+          WORKSPACE_FILE=$(find . -name "*.xcworkspace" -maxdepth 1 | head -n 1 | sed 's|^\./||' || true)
+          PROJECT_FILE=$(find . -name "*.xcodeproj" -maxdepth 1 | head -n 1 | sed 's|^\./||' || true)
+          
+          echo "Found workspace: $WORKSPACE_FILE"
+          echo "Found project: $PROJECT_FILE"
 
-          if [ -n "$WORKSPACE_FILE" ]; then
+          if [ -n "$WORKSPACE_FILE" ] && [ -f "$WORKSPACE_FILE/contents.xcworkspacedata" ]; then
+            echo "Using workspace: $WORKSPACE_FILE"
             SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+            echo "Using scheme: $SCHEME_NAME"
             xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-          elif [ -n "$PROJECT_FILE" ]; then
+          elif [ -n "$PROJECT_FILE" ] && [ -f "$PROJECT_FILE/project.pbxproj" ]; then
+            echo "Using project: $PROJECT_FILE"
             SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+            echo "Using scheme: $SCHEME_NAME"
             xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           else
-            echo "No .xcworkspace or .xcodeproj found." && exit 1
+            echo "No valid .xcworkspace or .xcodeproj found."
+            echo "Contents of ios directory:"
+            ls -la
+            exit 1
           fi
 
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
