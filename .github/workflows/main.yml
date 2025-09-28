@@ -52,8 +52,19 @@ jobs:
 
           if [ -n "$WORKSPACE_FILE" ] && [ -f "$WORKSPACE_FILE/contents.xcworkspacedata" ]; then
             echo "Using workspace: $WORKSPACE_FILE"
-            SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
-            echo "Using scheme: $SCHEME_NAME"
+            
+            # List all available schemes to find the main app scheme
+            echo "Available schemes:"
+            xcodebuild -workspace "$WORKSPACE_FILE" -list
+            
+            # Get the main app scheme (usually the first non-Pods scheme)
+            SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | grep -v "Pods-" | head -n 1 | xargs)
+            echo "Using main app scheme: $SCHEME_NAME"
+            
+            # Clean build directories first
+            echo "Cleaning build directories..."
+            rm -rf build/
+            rm -rf ~/Library/Developer/Xcode/DerivedData/CherryStudio-*
             
             # Build with detailed output and error handling
             echo "Starting xcodebuild..."
@@ -62,17 +73,31 @@ jobs:
               CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
               -destination 'generic/platform=iOS' \
               -allowProvisioningUpdates \
-              build 2>&1 | tee build.log; then
+              -derivedDataPath "$(pwd)/DerivedData" \
+              clean build 2>&1 | tee build.log; then
               echo "Build failed. Last 50 lines of build log:"
               tail -50 build.log
               echo "Searching for specific errors:"
               grep -i "error:" build.log | tail -10
+              echo "Searching for module map errors:"
+              grep -i "module map" build.log | tail -5
               exit 1
             fi
           elif [ -n "$PROJECT_FILE" ] && [ -f "$PROJECT_FILE/project.pbxproj" ]; then
             echo "Using project: $PROJECT_FILE"
-            SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
-            echo "Using scheme: $SCHEME_NAME"
+            
+            # List all available schemes
+            echo "Available schemes:"
+            xcodebuild -project "$PROJECT_FILE" -list
+            
+            # Get the main app scheme (usually the first non-Pods scheme)
+            SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | grep -v "Pods-" | head -n 1 | xargs)
+            echo "Using main app scheme: $SCHEME_NAME"
+            
+            # Clean build directories first
+            echo "Cleaning build directories..."
+            rm -rf build/
+            rm -rf ~/Library/Developer/Xcode/DerivedData/CherryStudio-*
             
             # Build with detailed output and error handling
             echo "Starting xcodebuild..."
@@ -81,11 +106,14 @@ jobs:
               CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
               -destination 'generic/platform=iOS' \
               -allowProvisioningUpdates \
-              build 2>&1 | tee build.log; then
+              -derivedDataPath "$(pwd)/DerivedData" \
+              clean build 2>&1 | tee build.log; then
               echo "Build failed. Last 50 lines of build log:"
               tail -50 build.log
               echo "Searching for specific errors:"
               grep -i "error:" build.log | tail -10
+              echo "Searching for module map errors:"
+              grep -i "module map" build.log | tail -5
               exit 1
             fi
           else
