@@ -15,20 +15,21 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Yarn
-        run: npm i -g yarn
+      - name: Enable Corepack and prepare Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.9.1 --activate
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Setup Ruby & CocoaPods
-        run: |
-          sudo gem install cocoapods
+        run: yarn install --immutable
 
       - name: Select Xcode
         run: |
           sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
 
       - name: Expo prebuild (iOS)
         run: |
