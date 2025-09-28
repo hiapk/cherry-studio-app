@@ -25,7 +25,7 @@ jobs:
           corepack enable
           corepack prepare yarn@4.9.1 --activate
 
-      - name: Install dependencies
+      - name: Install deps
         run: yarn install --immutable
 
       - name: Install CocoaPods
@@ -37,49 +37,36 @@ jobs:
           cd ios
           pod install --repo-update
 
-      - name: Build .app (Release, no signing) and package .ipa
+      - name: Build app (Release, no signing) and package IPA
         id: build_ipa
         run: |
           set -e
           cd ios
-          WORKSPACE=$(ls *.xcworkspace 2>/dev/null | head -n 1 || true)
-          PROJECT=$(ls *.xcodeproj 2>/dev/null | head -n 1 || true)
-          if [ -n "$WORKSPACE" ]; then
-            xcodebuild \
-              -workspace "$WORKSPACE" \
-              -scheme "$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)" \
-              -configuration Release \
-              -sdk iphoneos \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-              -resultBundlePath build-result.xcresult \
-              build
-          elif [ -n "$PROJECT" ]; then
-            xcodebuild \
-              -project "$PROJECT" \
-              -scheme "$(xcodebuild -project "$PROJECT" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)" \
-              -configuration Release \
-              -sdk iphoneos \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-              -resultBundlePath build-result.xcresult \
-              build
+          WORKSPACE_FILE=$(ls *.xcworkspace 2>/dev/null | head -n 1 || true)
+          PROJECT_FILE=$(ls *.xcodeproj 2>/dev/null | head -n 1 || true)
+
+          if [ -n "$WORKSPACE_FILE" ]; then
+            SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+            xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          elif [ -n "$PROJECT_FILE" ]; then
+            SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+            xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           else
-            echo "No Xcode workspace or project found." && exit 1
+            echo "No .xcworkspace or .xcodeproj found." && exit 1
           fi
-          # 查找 .app
+
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
           if [ -z "$APP_PATH" ]; then
             APP_PATH=$(find build -type d -name "*.app" | head -n 1 || true)
           fi
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app found." && exit 1
-          fi
+          [ -z "$APP_PATH" ] && echo "No .app found." && exit 1
+
           cd "$(dirname "$APP_PATH")"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$(basename "$APP_PATH")" Payload/
-          IPA_NAME=app.ipa
-          zip -r "$IPA_NAME" Payload
-          echo "IPA_PATH=$(pwd)/$IPA_NAME" >> $GITHUB_OUTPUT
+          zip -r app.ipa Payload
+          echo "IPA_PATH=$(pwd)/app.ipa" >> $GITHUB_OUTPUT
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
