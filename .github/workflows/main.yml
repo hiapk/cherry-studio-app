@@ -54,12 +54,18 @@ jobs:
             echo "Using workspace: $WORKSPACE_FILE"
             SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
             echo "Using scheme: $SCHEME_NAME"
-            xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+            xcodebuild -workspace "$WORKSPACE_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
+              build
           elif [ -n "$PROJECT_FILE" ] && [ -f "$PROJECT_FILE/project.pbxproj" ]; then
             echo "Using project: $PROJECT_FILE"
             SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
             echo "Using scheme: $SCHEME_NAME"
-            xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+            xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
+              build
           else
             echo "No valid .xcworkspace or .xcodeproj found."
             echo "Contents of ios directory:"
@@ -67,23 +73,26 @@ jobs:
             exit 1
           fi
 
-          # Find the built .app file in multiple possible locations
+          # Find the built .app file in the specified build directory
           echo "Searching for .app file..."
           
-          # First try DerivedData
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
-          echo "DerivedData search result: $APP_PATH"
+          # First check the specified build directory
+          BUILD_DIR="$(pwd)/build/Release-iphoneos"
+          if [ -d "$BUILD_DIR" ]; then
+            APP_PATH=$(find "$BUILD_DIR" -type d -name "*.app" | head -n 1 || true)
+            echo "Build directory ($BUILD_DIR) search result: $APP_PATH"
+          fi
+          
+          # If not found, try DerivedData as fallback
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" | grep -E "/Build/Products/Release-iphoneos/" | head -n 1 || true)
+            echo "DerivedData search result: $APP_PATH"
+          fi
           
           # If not found, try local build directory
           if [ -z "$APP_PATH" ]; then
             APP_PATH=$(find . -type d -name "*.app" | head -n 1 || true)
             echo "Local build search result: $APP_PATH"
-          fi
-          
-          # If still not found, try build directory
-          if [ -z "$APP_PATH" ]; then
-            APP_PATH=$(find build -type d -name "*.app" | head -n 1 2>/dev/null || true)
-            echo "Build directory search result: $APP_PATH"
           fi
           
           # If still not found, search more broadly
@@ -95,7 +104,9 @@ jobs:
           fi
           
           if [ -z "$APP_PATH" ]; then
-            echo "No .app found. Listing current directory contents:"
+            echo "No .app found. Listing build directory contents:"
+            ls -la "$BUILD_DIR" 2>/dev/null || echo "Build directory does not exist"
+            echo "Listing current directory contents:"
             ls -la
             echo "Searching for any build artifacts:"
             find . -name "*" -type d | grep -i build | head -10
